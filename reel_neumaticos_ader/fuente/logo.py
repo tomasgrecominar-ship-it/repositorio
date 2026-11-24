@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 B = os.path.dirname(os.path.abspath(__file__)) + '/'
-LOGO_RED = (230, 62, 54)
+LOGO_RED = (214, 10, 28)
 OUTLINE = (22, 16, 26)
 WHITE = (255, 255, 255)
 

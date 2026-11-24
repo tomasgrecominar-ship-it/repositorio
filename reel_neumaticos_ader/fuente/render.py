@@ -7,9 +7,9 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 B = os.path.dirname(os.path.abspath(__file__)) + '/'
 W, H, FPS = 1080, 1920, 30
 TOTAL = 40.0
-RED = (232, 48, 40)
+RED = (210, 8, 26)
 YEL = RED
-PLATE_IN, PLATE_OUT = (196, 34, 26), (98, 10, 8)
+PLATE_IN, PLATE_OUT = (168, 4, 16), (62, 0, 6)
 WHITE = (255, 255, 255)
 BLACK = (12, 12, 12)
 
@@ -310,7 +310,7 @@ PLATE = (np.array(PLATE_IN[::-1], np.float32) * (1 - _pr) + np.array(PLATE_OUT[:
 
 def red_plate(fr, k):
     lum = cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY).astype(np.float32)[..., None] / 255.0
-    tint = np.clip(PLATE * (0.55 + 0.75 * lum), 0, 255)
+    tint = np.clip(PLATE * (0.62 + 0.48 * lum), 0, 255)
     return np.clip(fr.astype(np.float32) * (1 - k) + tint * k, 0, 255).astype(np.uint8)
 
 def grade(img, fi, extra_dark=0.0):
