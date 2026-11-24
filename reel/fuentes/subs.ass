@@ -1,0 +1,25 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Sub,Montserrat,70,&H00FFFFFF,&H00FFFFFF,&H50050A14,&H8C000000,0,0,0,0,100,100,1,0,1,4,2,2,90,90,500,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.60,0:00:02.40,Sub,,0,0,0,,{\fad(180,180)\blur2}La Navidad ya está aquí
+Dialogue: 0,0:00:02.90,0:00:03.85,Sub,,0,0,0,,{\fad(180,180)\blur2}Luces doradas,
+Dialogue: 0,0:00:03.92,0:00:04.90,Sub,,0,0,0,,{\fad(180,180)\blur2}velas encendidas…
+Dialogue: 0,0:00:04.92,0:00:07.20,Sub,,0,0,0,,{\fad(180,180)\blur2}y ese aroma a pino\Nque lo llena todo
+Dialogue: 0,0:00:07.80,0:00:08.95,Sub,,0,0,0,,{\fad(180,180)\blur2}Es tiempo de parar
+Dialogue: 0,0:00:09.05,0:00:11.30,Sub,,0,0,0,,{\fad(180,180)\blur2}y de regalarte\Nun momento especial
+Dialogue: 0,0:00:11.80,0:00:13.45,Sub,,0,0,0,,{\fad(180,180)\blur2}Reserva tu sesión\Ncon {\c&H0070C4F2&}Rosa{\c&H00FFFFFF&}
+Dialogue: 0,0:00:13.50,0:00:15.40,Sub,,0,0,0,,{\fad(180,180)\blur2}para estas\Nfechas mágicas
+Dialogue: 0,0:00:16.00,0:00:17.62,Sub,,0,0,0,,{\fad(180,180)\blur2}Los huecos de\Ndiciembre vuelan
+Dialogue: 0,0:00:17.66,0:00:20.00,Sub,,0,0,0,,{\fad(180,180)\blur2}así que no lo dejes\Npara el último momento
+Dialogue: 0,0:00:20.60,0:00:22.30,Sub,,0,0,0,,{\fad(180,180)\blur2}Envíale un\Nmensaje directo
+Dialogue: 0,0:00:22.34,0:00:23.75,Sub,,0,0,0,,{\fad(180,180)\blur2}y asegura tu fecha
