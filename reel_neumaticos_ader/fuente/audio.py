@@ -26,21 +26,15 @@ for t in pops:
 
 inputs, filters, labels = [], [], []
 # VO lines
-for i in range(10):
+for i in range(0):
     inputs += ['-i', B + f'vo/l{i+1}.wav']
     d = int(R.LS[i] * 1000)
     filters.append(f'[{i}:a]aresample=48000,aformat=channel_layouts=mono,adelay={d}|{d}[v{i}]')
-vo_in = ''.join(f'[v{i}]' for i in range(10))
-filters.append(f'{vo_in}amix=inputs=10:normalize=0,highpass=f=85,'
-               f'equalizer=f=220:t=q:w=1.2:g=-2,equalizer=f=3200:t=q:w=1.0:g=3,equalizer=f=9000:t=q:w=1.2:g=1.5,'
-               f'acompressor=threshold=-20dB:ratio=3:attack=8:release=120:makeup=2,'
-               f'aformat=channel_layouts=stereo,apad=whole_dur={TOTAL}[vo]')
-filters.append('[vo]asplit=2[vo1][vosc]')
-# music
-mi = 10
+# no voice-over: music carries the piece
+mi = 0
 inputs += ['-ss', f'{MUSIC_IN}', '-t', f'{TOTAL + 0.5}', '-i', B + 'music/126.mp3']
 filters.append(f'[{mi}:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.62[mus]')
-filters.append('[mus][vosc]sidechaincompress=threshold=0.025:ratio=7:attack=25:release=420:makeup=1[musd]')
+filters.append('[mus]anull[musd]')
 filters.append(f'[musd]afade=t=out:st={TOTAL - 1.6}:d=1.6,atrim=0:{TOTAL}[musf]')
 # sfx
 k = mi + 1
@@ -53,7 +47,7 @@ for j, (sid, t, g, trim) in enumerate(sfx):
     filters.append(f'[{k}:a]aresample=48000,aformat=channel_layouts=stereo,{tr}volume={g},adelay={d}|{d}[s{j}]')
     sfx_labels.append(f'[s{j}]')
     k += 1
-filters.append(f'[vo1][musf]{"".join(sfx_labels)}amix=inputs={2 + len(sfx_labels)}:normalize=0,'
+filters.append(f'[musf]{"".join(sfx_labels)}amix=inputs={1 + len(sfx_labels)}:normalize=0,'
                f'atrim=0:{TOTAL},alimiter=limit=0.89:level=false[pre]')
 
 out_pre = B + 'work/mix_pre.wav'

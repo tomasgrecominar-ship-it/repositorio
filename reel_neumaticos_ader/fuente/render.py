@@ -7,7 +7,9 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 B = os.path.dirname(os.path.abspath(__file__)) + '/'
 W, H, FPS = 1080, 1920, 30
 TOTAL = 40.0
-YEL = (255, 196, 0)
+RED = (232, 48, 40)
+YEL = RED
+PLATE_IN, PLATE_OUT = (196, 34, 26), (98, 10, 8)
 WHITE = (255, 255, 255)
 BLACK = (12, 12, 12)
 
@@ -68,7 +70,19 @@ def with_shadow(img, radius=14, opacity=0.55, offset=(0, 6)):
     out.alpha_composite(img, (pad, pad))
     return out
 
-def text_img(txt, f, fill=WHITE, tracking=0, stroke=0, stroke_fill=BLACK, shadow=True):
+def extrude(im, depth):
+    a = np.array(im)[..., 3]
+    out = Image.new('RGBA', (im.size[0] + depth + 2, im.size[1] + depth + 2), (0, 0, 0, 0))
+    for k in range(depth, 0, -1):
+        sh = Image.new('RGBA', out.size, (14, 8, 12, 255))
+        m = np.zeros((out.size[1], out.size[0]), np.uint8)
+        m[k:k + a.shape[0], int(k * .6):int(k * .6) + a.shape[1]] = a
+        sh.putalpha(Image.fromarray(m))
+        out.alpha_composite(sh)
+    out.alpha_composite(im, (0, 0))
+    return out
+
+def text_img(txt, f, fill=WHITE, tracking=0, stroke=0, stroke_fill=BLACK, shadow=True, d3=0):
     asc, desc = f.getmetrics()
     w = int(text_width(txt, f, tracking)) + 2 * stroke + 4
     h = asc + desc + 2 * stroke + 4
@@ -78,6 +92,8 @@ def text_img(txt, f, fill=WHITE, tracking=0, stroke=0, stroke_fill=BLACK, shadow
     bb = im.getbbox()
     if bb:
         im = im.crop((0, max(0, bb[1] - 2), w, min(h, bb[3] + 2)))
+    if d3:
+        im = extrude(im, d3)
     if shadow:
         im = with_shadow(im)
     return im
@@ -123,7 +139,7 @@ def to_np(im):
     return np.array(im, dtype=np.uint8)
 
 # ---------------------------------------------------------------- icons
-def pin_icon(size=96, color=YEL):
+def pin_icon(size=96, color=RED):
     s = size * 4
     im = Image.new('RGBA', (s, int(s * 1.3)), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
@@ -289,6 +305,14 @@ MASK = (vig * bottom * top)[..., None].astype(np.float32)
 rng = np.random.default_rng(7)
 GRAIN = [cv2.GaussianBlur(rng.normal(0, 4.2, (H, W)).astype(np.float32), (0, 0), 0.6) for _ in range(6)]
 
+_pr = np.sqrt(((xx - W / 2) / (W * .8)) ** 2 + ((yy - H * .42) / (H * .6)) ** 2).clip(0, 1)[..., None]
+PLATE = (np.array(PLATE_IN[::-1], np.float32) * (1 - _pr) + np.array(PLATE_OUT[::-1], np.float32) * _pr)
+
+def red_plate(fr, k):
+    lum = cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY).astype(np.float32)[..., None] / 255.0
+    tint = np.clip(PLATE * (0.55 + 0.75 * lum), 0, 255)
+    return np.clip(fr.astype(np.float32) * (1 - k) + tint * k, 0, 255).astype(np.uint8)
+
 def grade(img, fi, extra_dark=0.0):
     img = cv2.LUT(img, LUT)
     f = img.astype(np.float32) * (MASK * (1 - extra_dark))
@@ -344,6 +368,16 @@ def blend(frame, el, t):
     if a <= 0.003:
         return
     im = el.im
+    sh0 = getattr(el, 'shine', None)
+    if sh0 is not None and sh0 <= t <= sh0 + 0.75:
+        p = (t - sh0) / 0.75
+        h_, w_ = im.shape[:2]
+        xs = np.arange(w_)[None, :] + 0.35 * np.arange(h_)[:, None]
+        cx = -0.2 * w_ + p * 1.6 * w_
+        band = np.exp(-((xs - cx) / (0.06 * w_)) ** 2)[..., None] * 0.55
+        im = im.copy().astype(np.float32)
+        im[..., :3] = im[..., :3] + (255 - im[..., :3]) * band * (im[..., 3:4] / 255)
+        im = np.clip(im, 0, 255).astype(np.uint8)
     if abs(s - 1) > 1e-3:
         h, w = im.shape[:2]
         nw, nh = max(1, int(w * s)), max(1, int(h * s))
@@ -373,7 +407,7 @@ for txt, wi, size, col in rows:
     f = anton(size)
     while text_width(txt, f) > 900:
         size -= 6; f = anton(size)
-    row_imgs.append(text_img(txt, f, col, shadow=True))
+    row_imgs.append(text_img(txt, f, col, shadow=True, d3=max(6, size // 22)))
 gap = -18
 total_h = sum(i.size[1] for i in row_imgs) + gap * 3
 y = 860 - total_h / 2
@@ -383,11 +417,11 @@ for (txt, wi, size, col), im in zip(rows, row_imgs):
     y += im.size[1] + gap
 
 # ---- Line 2 card: MENOS AGARRE / FRENA PEOR
-c1 = text_img('MENOS AGARRE', anton(128), WHITE)
-c2 = text_img('FRENA PEOR', anton(150), YEL)
+c1 = text_img('MENOS AGARRE', anton(128), WHITE, d3=6)
+c2 = text_img('FRENA PEOR', anton(150), RED, d3=7)
 ELS.append(El(c1, W / 2, 470, wt(2, 3)[0] - .05, CUTS[4] - .2, anim='rise', din=.35, aout='up'))
 ELS.append(El(c2, W / 2, 640, wt(2, 10)[0] - .05, CUTS[4] - .2, anim='slam', din=.25, aout='up'))
-chip_wet = pill('CON PISO MOJADO', mont(34, 800), YEL, BLACK, 26, 14, tracking=2)
+chip_wet = pill('CON PISO MOJADO', mont(34, 800), RED, WHITE, 26, 14, tracking=2)
 ELS.append(El(chip_wet, W / 2, 330, wt(2, 8)[0] - .05, CUTS[4] - .2, anim='pop', din=.25, aout='up'))
 
 # ---- Line 3 card: small warning chip
@@ -395,8 +429,8 @@ chip3 = pill('NO TE QUEDES A PIE', mont(36, 800), None, WHITE, 28, 16, outline=W
 ELS.append(El(chip3, W / 2, 420, wt(3, 0)[0], CUTS[5] - .2, anim='pop', din=.3, aout='up'))
 
 # ---- Line 4 title card: 3 SEÑALES
-t3 = text_img('3', anton(520), YEL)
-ts = text_img('SEÑALES', anton(190), WHITE)
+t3 = text_img('3', anton(520), RED, d3=16)
+ts = text_img('SEÑALES', anton(190), WHITE, d3=8)
 tsub = text_img('PARA CAMBIAR TUS CUBIERTAS', mont(42, 800), WHITE, tracking=4)
 DIM.append((CUTS[5], CUTS[6], 0.45))
 ELS.append(El(t3, W / 2, 640, wt(4, 3)[0] - .08, CUTS[6] - .12, anim='slam', din=.28, aout='shrink', dout=.14))
@@ -408,17 +442,17 @@ def num_card(n, title, sub, active):
     sq = 150
     im = Image.new('RGBA', (sq, sq), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    d.rounded_rectangle((0, 0, sq - 1, sq - 1), 26, fill=YEL + (255,))
+    d.rounded_rectangle((0, 0, sq - 1, sq - 1), 26, fill=RED + (255,))
     f = anton(104)
     tw = f.getlength(n)
     bb = f.getbbox(n)
-    d.text(((sq - tw) / 2, (sq - (bb[3] - bb[1])) / 2 - bb[1]), n, font=f, fill=BLACK + (255,))
+    d.text(((sq - tw) / 2, (sq - (bb[3] - bb[1])) / 2 - bb[1]), n, font=f, fill=WHITE + (255,))
     ft = anton(92)
     size = 92
     while text_width(title, ft) > 640:
         size -= 4; ft = anton(size)
     tt = text_img(title, ft, WHITE, shadow=False)
-    st = text_img(sub, mont(40, 700), (255, 236, 170), shadow=False)
+    st = text_img(sub, mont(40, 700), (238, 238, 238), shadow=False)
     # progress bars
     pb = Image.new('RGBA', (3 * 70 + 2 * 12, 10), (0, 0, 0, 0))
     dp = ImageDraw.Draw(pb)
@@ -441,47 +475,49 @@ for k, (ln, n, title, sub, ci, ce) in enumerate(cards):
     ELS.append(El(im, 70, 400, wt(ln, 0)[0] - .1, CUTS[ce] - .22, anim='left', din=.45, aout='left', dout=.2, anchor='l'))
 
 # ---- Line 8: brand lockup
-def lockup(scale=1.0):
-    a = text_img('NEUMÁTICOS', mont(int(54 * scale), 800), WHITE, tracking=int(16 * scale), shadow=False)
-    b = text_img('ADER', anton(int(270 * scale)), YEL, shadow=False)
-    line = Image.new('RGBA', (int(b.size[0] * .9), max(4, int(7 * scale))), YEL + (255,))
-    return with_shadow(stack([a, b], gap=int(10 * scale)), 18, .6, (0, 8))
+LOGO = Image.open(B + 'logo/logo_neumaticosader.png').convert('RGBA')
+def lockup(scale=1.0, width=900):
+    w = int(width * scale)
+    lg = LOGO.resize((w, int(LOGO.size[1] * w / LOGO.size[0])), Image.LANCZOS)
+    return with_shadow(lg, 18, .55, (0, 8))
 
 brand = lockup()
 t_ader = wt(8, 1)[0]
-ELS.append(El(brand, W / 2, 520, t_ader - .08, CUTS[12] - .15, anim='slam', din=.3, aout='up', dout=.2))
+ELS.append(El(brand, W / 2, 560, t_ader - .08, CUTS[12] - .15, anim='slam', din=.3, aout='up', dout=.2))
 chipA = pill('ASESORAMIENTO', mont(34, 800), None, WHITE, 26, 14, outline=WHITE, tracking=2)
-chipB = pill('LA MEDIDA JUSTA', mont(34, 800), YEL, BLACK, 26, 14, tracking=2)
+chipB = pill('LA MEDIDA JUSTA', mont(34, 800), RED, WHITE, 26, 14, tracking=2)
 ELS.append(El(chipA, W / 2, 790, wt(8, 4)[0] - .05, CUTS[12] - .15, anim='pop', din=.28, aout='up', dout=.2))
 ELS.append(El(chipB, W / 2, 890, wt(8, 9)[0] - .05, CUTS[12] - .15, anim='pop', din=.28, aout='up', dout=.2))
 
 # ---- Line 9: location + trust
 chipT = pill('ATENCIÓN DE CONFIANZA', mont(34, 800), None, WHITE, 26, 14, outline=WHITE, tracking=2)
 ELS.append(El(chipT, W / 2, 330, wt(9, 0)[0] - .05, CUTS[14] - .15, anim='pop', din=.28, aout='up', dout=.2))
-loc_a = text_img('AV. DE MAYO 210', anton(120), WHITE, shadow=False)
-loc_b = text_img('VILLA ADELINA', mont(46, 800), YEL, tracking=8, shadow=False)
+loc_a = text_img('AV. DE MAYO 210', anton(120), WHITE, shadow=False, d3=6)
+loc_b = text_img('VILLA ADELINA', mont(46, 800), WHITE, tracking=8, shadow=False)
 loc = with_shadow(hstack([pin_icon(92), stack([loc_a, loc_b], gap=26, align='left')], gap=26), 16, .6, (0, 6))
 ELS.append(El(loc, W / 2, 540, wt(9, 4)[0] - .08, CUTS[14] - .15, anim='rise', din=.4, aout='up', dout=.2))
 
 # ---- End card (line 10 + hold)
 T_END = CUTS[14]
-DIM.append((T_END + 0.05, TOTAL + 1, 0.38))
-brand2 = lockup(0.92)
-ELS.append(El(brand2, W / 2, 470, T_END + .18, TOTAL + 5, anim='slam', din=.32))
-addr = text_img('AV. DE MAYO 210  ·  VILLA ADELINA', mont(36, 700), WHITE, tracking=2)
-ELS.append(El(addr, W / 2, 680, T_END + .45, TOTAL + 5, anim='fade', din=.4))
-cta = pill('ESCRIBINOS POR DM', mont(52, 900), YEL, BLACK, 52, 30, tracking=2)
+PLATE_T = T_END + 0.02
+brand2 = lockup(1.0, 1000)
+LOGO_EL = El(brand2, W / 2, 730, T_END + .30, TOTAL + 5, anim='slam', din=.34)
+LOGO_EL.shine = T_END + 0.85
+ELS.append(LOGO_EL)
+addr = text_img('AV. DE MAYO 210  ·  VILLA ADELINA', mont(38, 700), WHITE, tracking=2)
+ELS.append(El(addr, W / 2, 880, T_END + .60, TOTAL + 5, anim='fade', din=.4))
+cta = pill('ESCRIBINOS POR DM', mont(52, 900), WHITE, RED, 52, 30, tracking=2)
 t_cta = wt(10, 0)[0]
-ELS.append(El(cta, W / 2, 830, t_cta - .05, TOTAL + 5, anim='pop', din=.32, pulse=(60 / 112.35 * 2, t_cta)))
+ELS.append(El(cta, W / 2, 1040, t_cta - .05, TOTAL + 5, anim='pop', din=.32, pulse=(60 / 112.35 * 2, t_cta)))
 handle = text_img('@neumaticosader_avdemayo', mont(44, 700), WHITE)
-ELS.append(El(handle, W / 2, 965, t_cta + .25, TOTAL + 5, anim='rise', din=.4))
-save = with_shadow(hstack([bookmark_icon(70), text_img('GUARDÁ ESTE VIDEO', anton(96), WHITE, shadow=False)], gap=24), 16, .6, (0, 6))
-T_SAVE = LE[9] + 0.15
-ELS.append(El(save, W / 2, 1265, T_SAVE, TOTAL + 5, anim='pop', din=.3))
+ELS.append(El(handle, W / 2, 1170, t_cta + .25, TOTAL + 5, anim='rise', din=.4))
+save = with_shadow(hstack([bookmark_icon(70, WHITE), text_img('GUARDÁ ESTE VIDEO', anton(96), WHITE, shadow=False, d3=6)], gap=24), 16, .6, (0, 6))
+T_SAVE = wt(10, 5)[0]
+ELS.append(El(save, W / 2, 1380, T_SAVE, TOTAL + 5, anim='pop', din=.3))
 
 # ---------------------------------------------------------------- subtitles
 MERGE = {5: {(8, 12): '1,6 MM'}, 9: {(7, 9): '210'}}
-SUB_LINES = [2, 3, 5, 6, 7, 8, 9, 10]
+SUB_LINES = [2, 3, 5, 6, 7, 8, 9]
 SUB_Y = 1265
 SUB_F = mont(66, 900)
 
@@ -549,12 +585,16 @@ def sub_img(ci, active):
         space = scale_f.getlength(' ')
         tot = sum(ws) + space * (len(ws) - 1)
     asc, desc = scale_f.getmetrics()
-    im = Image.new('RGBA', (int(tot) + 2 * stroke + 8, asc + desc + 2 * stroke + 8), (0, 0, 0, 0))
+    im = Image.new('RGBA', (int(tot) + 2 * stroke + 32, asc + desc + 2 * stroke + 24), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    x = stroke + 4
+    x = stroke + 16
+    capb = scale_f.getbbox('ÁBCDEFGHIJKLMNOPQRSTUVWXYZ')
     for j, w in enumerate(words_):
-        col = YEL if j == active else WHITE
-        d.text((x, stroke + 4), w, font=scale_f, fill=col + (255,), stroke_width=stroke, stroke_fill=(10, 10, 10, 255))
+        if j == active:
+            d.rounded_rectangle((x - 12, stroke + 12 + capb[1] - 12, x + ws[j] + 12, stroke + 12 + capb[3] + 12), 12, fill=RED + (255,))
+            d.text((x, stroke + 12), w, font=scale_f, fill=WHITE + (255,))
+        else:
+            d.text((x, stroke + 12), w, font=scale_f, fill=WHITE + (255,), stroke_width=stroke, stroke_fill=(10, 10, 10, 255))
         x += ws[j] + space
     im = with_shadow(im, 12, .5, (0, 5))
     arr = to_np(im)
@@ -582,6 +622,8 @@ def render_frame(fi):
         if a - .2 <= t <= b:
             dark = max(dark, amt * ease_out_cubic(clamp((t - a + .2) / .35)))
     fr = grade(bg, fi, dark)
+    if t >= PLATE_T - 0.1:
+        fr = red_plate(fr, 0.9 * ease_out_cubic(clamp((t - PLATE_T + 0.1) / 0.4)))
     for el in ELS:
         blend(fr, el, t)
     draw_subs(fr, t)
