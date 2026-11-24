@@ -33,7 +33,7 @@ def put(img, x, y, anchor='c'):
 
 # layout (grid-safe zone: y 285..1635)
 put(R.lockup(1.0, 700), W / 2, 420)
-rows = [('¿TUS CUBIERTAS', 118, R.WHITE), ('AGUANTAN', 178, R.WHITE), ('UN BACHE', 178, R.WHITE), ('MÁS?', 250, R.RED)]
+rows = [('¿TUS CUBIERTAS', 118, R.WHITE), ('AGUANTAN', 178, R.WHITE), ('UN POZO', 178, R.WHITE), ('MÁS?', 250, R.RED)]
 imgs = []
 for txt, size, col in rows:
     f = R.anton(size)

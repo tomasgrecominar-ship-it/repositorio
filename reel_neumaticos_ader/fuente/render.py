@@ -401,7 +401,7 @@ DIM = []        # (t0,t1,amount) full-frame darkening windows
 
 # ---- HOOK (line 1): kinetic headline synced to words
 w1 = words[0]['asr']
-rows = [('¿TUS CUBIERTAS', 0, 150, WHITE), ('AGUANTAN', 2, 205, WHITE), ('UN BACHE', 3, 205, WHITE), ('MÁS?', 5, 300, YEL)]
+rows = [('¿TUS CUBIERTAS', 0, 150, WHITE), ('AGUANTAN', 2, 205, WHITE), ('UN POZO', 3, 205, WHITE), ('MÁS?', 5, 300, YEL)]
 row_imgs = []
 for txt, wi, size, col in rows:
     f = anton(size)
