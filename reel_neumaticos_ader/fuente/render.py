@@ -517,7 +517,7 @@ ELS.append(El(save, W / 2, 1380, T_SAVE, TOTAL + 5, anim='pop', din=.3))
 
 # ---------------------------------------------------------------- subtitles
 MERGE = {5: {(8, 12): '1,6 MM'}, 9: {(7, 9): '210'}}
-SUB_LINES = [2, 3, 5, 6, 7, 8, 9]
+SUB_LINES = []  # sin subtítulos (no hay voz)
 SUB_Y = 1265
 SUB_F = mont(66, 900)
 
