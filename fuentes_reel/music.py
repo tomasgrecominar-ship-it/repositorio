@@ -1,4 +1,4 @@
-"""Original ambient-pop track for the reel (96 BPM, B minor). Drop at 17.5 s."""
+"""Original ambient-pop track for the reel (96 BPM, B minor). Drop at 25 s."""
 import numpy as np, sys
 from scipy.signal import butter, lfilter, fftconvolve
 from scipy.io import wavfile
@@ -7,8 +7,11 @@ SR = 44100
 BPM = 96
 BEAT = 60 / BPM          # 0.625 s
 BAR = 4 * BEAT           # 2.5 s
-TOTAL = 32.4
-DROP = 17.5
+TOTAL = 45.15
+DROP = 25.0
+BUILD = 17.5
+ROLL = 22.5
+OUTRO = 38.75
 N = int(TOTAL * SR)
 rng = np.random.default_rng(3)
 
@@ -116,11 +119,11 @@ for b in range(NBARS):
     root, pnotes, arp = CH[b % 4]
     if t0 >= TOTAL - 0.5: break
     # pad everywhere (louder after drop), held chord at the end
-    if t0 >= 29.9:
+    if t0 >= 42.4:
         add(pad([47] + CH[0][1], 1.2, att=0.3, rel=1.6), t0, 0.6, rev=0.9)
         add(bell(83, 2.4), t0, 0.08, rev=1.0)
         continue
-    g = 0.42 if t0 < DROP else (0.6 if t0 < 26.25 else 0.45)
+    g = 0.42 if t0 < DROP else (0.6 if t0 < OUTRO else 0.45)
     add(pad(pnotes, BAR, att=0.7 if t0 else 0.25), t0, g, rev=0.6)
 
     for k in range(16):  # 16th grid
@@ -133,8 +136,8 @@ for b in range(NBARS):
         if t < 5.0:
             if beat and t > 0.6:
                 add(pluck(arp[q % 4], bright=0.6), t, 0.14, pan=0.3 * (-1) ** q, rev=0.8)
-        # ---- verse (5-12.5)
-        elif t < 12.5:
+        # ---- verse
+        elif t < BUILD:
             if eighth:
                 add(pluck(arp[[0, 1, 2, 3, 2, 1, 2, 3][k // 2]]), t, 0.13, pan=0.35 * (-1) ** (k // 2), rev=0.6)
             if k in (0, 8): add(kick(), t, 0.55)
@@ -144,20 +147,20 @@ for b in range(NBARS):
         elif t < DROP:
             if t >= DROP - 0.25:  # breath before the drop
                 continue
-            dens = 2 if t < 15.0 else 1
+            dens = 2 if t < 20.0 else 1
             if k % dens == 0:
                 add(pluck(arp[(k // dens) % 4], bright=1.2), t, 0.12, pan=0.35 * (-1) ** k, rev=0.6)
-            if beat and t < 15.0: add(kick(), t, 0.5)
-            if t >= 15.0:
-                frac = (t - 15.0) / (DROP - 15.0)
+            if beat and t < ROLL: add(kick(), t, 0.5)
+            if t >= ROLL:
+                frac = (t - ROLL) / (DROP - ROLL)
                 step = 4 if frac < 0.4 else (2 if frac < 0.8 else 1)
                 if k % step == 0:
                     add(snare_hit(), t, 0.12 + 0.25 * frac, rev=0.3)
                     if step == 1:  # 32nds at the very end
                         add(snare_hit(), t + BEAT / 8, 0.12 + 0.25 * frac, rev=0.3)
-            if k == 0 and t < 15.0: add(bass(root, BAR * 0.95), t, 0.30)
+            if k == 0 and t < ROLL: add(bass(root, BAR * 0.95), t, 0.30)
         # ---- drop (17.5-26.25)
-        elif t < 26.25:
+        elif t < OUTRO:
             add(pluck(arp[[0, 2, 1, 3][k % 4]] + (12 if k % 8 == 7 else 0), bright=1.1), t, 0.10,
                 pan=0.4 * (-1) ** k, rev=0.5)
             if beat: add(kick(), t, 0.62)
@@ -172,16 +175,16 @@ for b in range(NBARS):
                 add(pluck(arp[[3, 2, 1, 0][q]], bright=0.6), t, 0.12, pan=0.3 * (-1) ** q, rev=0.9)
 
 # riser into the drop + big impact on the drop
-add(riser(DROP - 0.25 - 12.5), 12.5, 0.32, rev=0.3)
+add(riser(DROP - 0.25 - BUILD), BUILD, 0.32, rev=0.3)
 sub, cr = impact(True)
 add(sub, DROP, 0.95); add(cr, DROP, 0.45, rev=0.6)
 for i, m in enumerate([95, 90, 86, 83, 78]):
     add(bell(m, 3), DROP + i * 0.04, 0.05, pan=(-0.6 + i * 0.3), rev=1.0)
 # soft impact into the outro
 sub, cr = impact(False)
-add(sub, 26.25, 0.45); add(cr, 26.25, 0.18, rev=0.6)
+add(sub, OUTRO, 0.45); add(cr, OUTRO, 0.18, rev=0.6)
 # soft cloud "whooshes" on transitions
-for tw in (5.0, 8.75, 12.5, 22.5):
+for tw in (5.0, 11.25, 17.5, 32.5):
     d = 1.4; t = tt(d); x = np.sin(np.pi * t / d) ** 2
     w = lp(hp(rng.standard_normal(len(t)), 300), 2500) * x
     add(w, tw - d / 2, 0.10, rev=0.4)
