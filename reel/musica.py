@@ -1,15 +1,15 @@
-"""Música original para el reel (120 BPM, 35 s), sintetizada con numpy/scipy.
+"""Música original para el reel (120 BPM, 37 s), sintetizada con numpy/scipy.
 
 Genera reel/salida/musica.wav. Los golpes fuertes coinciden con los cortes
-del video: 1.0 s (aparece el "3"), 5.0 s (empieza el montaje),
-20.0 s (repetición de la promo) y 23.5 s (cierre con el logo).
+del video: 1.0 s (aparece el "3"), 5.0 s (tomas del local),
+9.0 s ("Nuestros servicios") y 23.5 s (cierre con el logo).
 """
 import numpy as np
 from scipy.signal import butter, sosfilt, fftconvolve
 import wave, os
 
 SR = 44100
-DUR = 35.0
+DUR = 37.0
 BPM = 120
 BEAT = 60 / BPM
 N = int(SR * DUR)
@@ -124,7 +124,7 @@ def main():
         # secciones
         intro = tb < 1.0
         outro_soft = 23.5 <= tb < 27.5
-        ending = tb >= 33.0
+        ending = tb >= 35.0
         full = not intro and not ending
 
         if full and not outro_soft:
@@ -164,19 +164,19 @@ def main():
 
     # Golpes y subidas sincronizados con el video
     place(fx, riser(1.0), 0.0, 0.8)
-    for at in (1.0, 5.0, 20.0, 23.5):
+    for at in (1.0, 5.0, 9.0, 23.5):
         place(fx, impact(), at, 0.75)
     place(fx, riser(1.5), 3.5, 0.7)
-    place(fx, riser(2.0), 18.0, 0.8)
+    place(fx, riser(1.5), 7.5, 0.8)
     place(fx, riser(1.0), 22.5, 0.7)
     # redoble antes de la repetición
     for k in range(16):
-        place(drums, C, 19.0 + k * BEAT / 8, 0.15 + 0.4 * k / 16)
+        place(drums, C, 8.0 + k * BEAT / 8, 0.15 + 0.4 * k / 16)
     # golpe final
-    place(fx, impact(), 33.0, 0.8)
+    place(fx, impact(), 35.0, 0.8)
     d = 2.0
     fin = sum(saw(note(n), d, (-0.01, 0, 0.01)) for n in [57, 64, 69, 72, 76]) / 5
-    place(synth, filt(fin, "low", 2500) * np.exp(-t_arr(d) * 1.6), 33.0, 0.45)
+    place(synth, filt(fin, "low", 2500) * np.exp(-t_arr(d) * 1.6), 35.0, 0.45)
 
     bass *= side
     synth *= side ** 0.7

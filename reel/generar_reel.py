@@ -5,10 +5,9 @@ Uso (desde la raíz del repo):
     python3 reel/generar_reel.py            # video completo
     python3 reel/generar_reel.py --preview  # cuadros sueltos para revisar
 
-Material real: si existen archivos en reel/material/ se usan en lugar de las
-tomas generadas por código:
-    toma_01 ... toma_09 (.jpg/.png/.mp4/.mov)  -> reemplazan las tomas del montaje
-    logo.png (con transparencia)               -> reemplaza el logo provisorio
+Fotos: se configuran en INTRO_TOMAS, FONDO_TITULO y SERVICIOS (archivos en
+reel/material/). Si falta una foto de servicio se usa una toma generada.
+Logo: reel/material/logo.png (con transparencia) reemplaza la reconstrucción.
 """
 import os, sys, glob, subprocess, math, shutil
 from functools import lru_cache
@@ -19,7 +18,7 @@ from PIL import Image, ImageDraw, ImageFilter
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import assets as A
 
-W, H, FPS, DUR = 1080, 1920, 30, 35.0
+W, H, FPS, DUR = 1080, 1920, 30, 37.0
 NF = int(DUR * FPS)
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(HERE, "salida")
@@ -35,25 +34,26 @@ BLACK = (14, 14, 16)
 PROMO_1 = "3"
 PROMO_2 = "CUOTAS"
 PROMO_3 = "SIN INTERÉS"
-CIERRE_1 = "¡Te esperamos!"
-CIERRE_2 = "Av. de Mayo 210,"
-CIERRE_3 = "Villa Adelina"
-# Encuadre de cada foto real del montaje: (zoom inicial, zoom final,
-# centro x inicial, centro y inicial, centro x final, centro y final), en
-# fracciones de la imagen. Se usa para el movimiento lento de cámara.
-ENCUADRES = {
-    1: (1.00, 1.15, 0.50, 0.50, 0.45, 0.60),   # pila de neumáticos
-    2: (1.18, 1.02, 0.45, 0.40, 0.55, 0.55),   # neumáticos al sol
-    3: (1.30, 1.45, 0.55, 0.62, 0.45, 0.66),   # auto rojo en el taller
-    4: (1.05, 1.22, 0.55, 0.55, 0.60, 0.62),   # desmontadora
-    5: (1.32, 1.48, 0.50, 0.36, 0.52, 0.32),   # balanceadora
-    6: (1.05, 1.20, 0.45, 0.45, 0.50, 0.40),   # auto en el elevador
-    7: (1.55, 1.75, 0.22, 0.30, 0.30, 0.26),   # estantería con cubiertas
-    9: (1.70, 1.90, 0.30, 0.78, 0.36, 0.74),   # banda de rodamiento de cerca
-}
-# Rótulos de las tomas del montaje (None = sin rótulo).
-ROTULOS = ["NEUMÁTICOS", "PARA TU AUTO", "TALLER", "MONTAJE",
-           "BALANCEO", "EN BUENAS MANOS", "STOCK", None, None]
+HORARIO = ["Abierto de 8:00 a 12:30", "y de 14:00 a 18:00"]
+DIRECCION = ["Te esperamos en", "Av. de Mayo 210, Villa Adelina"]
+
+# Fotos (en reel/material/). Encuadre = (zoom inicial, zoom final, centro x
+# inicial, centro y inicial, centro x final, centro y final) en fracciones de
+# la imagen: define el movimiento lento de cámara sobre la foto.
+INTRO_TOMAS = [
+    ("pila_neumaticos.jpg", (1.00, 1.15, 0.50, 0.50, 0.45, 0.60), "NEUMÁTICOS"),
+    ("taller.jpg", (1.30, 1.45, 0.55, 0.62, 0.45, 0.66), "TALLER"),
+]
+FONDO_TITULO = ("neumaticos_sol.jpg", (1.10, 1.25, 0.50, 0.45, 0.50, 0.55))
+# Servicios: (líneas del texto grande, foto, encuadre, toma generada si falta la foto)
+SERVICIOS = [
+    (["NEUMÁTICOS", "MULTIMARCA"], "desmontadora.jpg", (1.55, 1.75, 0.22, 0.30, 0.30, 0.26), "stacks"),
+    (["TREN", "DELANTERO"], "tren_delantero.jpg", (1.05, 1.20, 0.45, 0.45, 0.50, 0.40), "garage"),
+    (["FRENOS"], "frenos.jpg", (1.10, 1.25, 0.50, 0.50, 0.50, 0.50), "hub"),
+    (["PINTURA", "DE LLANTAS"], "llantas.jpg", (1.10, 1.25, 0.50, 0.50, 0.50, 0.50), "hero"),
+    (["ALINEACIÓN", "Y BALANCEO"], "balanceadora.jpg", (1.32, 1.48, 0.50, 0.36, 0.52, 0.32), "balance"),
+]
+FONDO_CIERRE = "taller.jpg"
 
 
 # ------------------------------------------------------------- utilidades
@@ -187,53 +187,28 @@ def caption(canvas, text, t, dur):
     put_reveal(canvas, img, 70 + img.width / 2, y, prog(t, 0.22, 0.35), a)
 
 
-# ---------------------------------------------------------------- material
-def find_material(name):
-    for ext in (".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp"):
-        p = os.path.join(MAT_DIR, name + ext)
-        if os.path.exists(p):
-            return p
-    return None
+# ---------------------------------------------------------------- fotos
+def photo_path(name):
+    p = os.path.join(MAT_DIR, name)
+    return p if os.path.exists(p) else None
 
 
-def prepare_material():
-    """Convierte videos reales a cuadros 1080x1920 (una sola vez)."""
-    found = {}
-    for i in range(1, 10):
-        p = find_material(f"toma_{i:02d}")
-        if not p:
-            continue
-        if p.lower().endswith((".mp4", ".mov", ".m4v")):
-            d = os.path.join(TMP_DIR, f"toma_{i:02d}")
-            if not os.path.isdir(d):
-                os.makedirs(d)
-                subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", p, "-t", "4",
-                                "-vf", f"fps={FPS},scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}",
-                                os.path.join(d, "%04d.jpg")], check=True)
-            found[i] = ("video", d)
-        else:
-            found[i] = ("image", p)
-    return found
+def kenburns(name, enc, t, dur):
+    z0, z1, x0, y0, x1, y1 = enc
+    e = ease_in_out(clamp(t / max(dur, 0.1)))
+    return cover(graded_photo(photo_path(name)), x0 + (x1 - x0) * e, y0 + (y1 - y0) * e,
+                 z0 + (z1 - z0) * e).convert("RGBA")
 
 
-MATERIAL = {}
+def graded(c):
+    return A.to_img(grade_arr(np.asarray(c.convert("RGB"), np.float32) / 255)).convert("RGBA")
 
 
-def material_shot(slot):
-    kind, path = MATERIAL[slot]
-    z0, z1, x0, y0, x1, y1 = ENCUADRES.get(slot, (1.0, 1.12, 0.5, 0.5, 0.5, 0.5))
-
+def photo_shot(name, enc, label):
     def fn(t, dur):
-        if kind == "image":
-            img = graded_photo(path)
-            e = ease_in_out(clamp(t / max(dur, 0.1)) * 0.85 + 0.15 * clamp(t / max(dur, 0.1)))
-            c = cover(img, x0 + (x1 - x0) * e, y0 + (y1 - y0) * e, z0 + (z1 - z0) * e).convert("RGBA")
-        else:
-            frames = sorted(glob.glob(os.path.join(path, "*.jpg")))
-            k = int(clamp(t * FPS, 0, len(frames) - 1))
-            c = Image.open(frames[k]).convert("RGBA")
+        c = kenburns(name, enc, t, dur)
         c.alpha_composite(red_grad_bottom())
-        caption(c, ROTULOS[slot - 1], t, dur)
+        caption(c, label, t, dur)
         return c
     return fn
 
@@ -268,11 +243,6 @@ def grade_arr(a):
     red = np.array(RED, np.float32) / 255
     tint = lum * red * 1.55                           # sombras y medios en rojo
     return a * 0.7 + np.clip(tint, 0, 1) * 0.3
-
-
-@lru_cache(maxsize=None)
-def load_image(p):
-    return Image.open(p).convert("RGB")
 
 
 # ----------------------------------------------------------------- tomas
@@ -637,6 +607,204 @@ def shot_reprise(t, dur):
     return c
 
 
+def fit(img, maxw):
+    if img.width <= maxw:
+        return img
+    return img.resize((maxw, int(img.height * maxw / img.width)), Image.LANCZOS)
+
+
+@lru_cache(maxsize=None)
+def strong_grad():
+    al = np.zeros((H, W), np.float32)
+    ys = np.arange(H, dtype=np.float32)
+    al[:] = (np.clip((ys - 780) / 700, 0, 1) ** 1.1 * 0.92)[:, None]
+    al = np.maximum(al, (np.clip((360 - ys) / 360, 0, 1) * 0.5)[:, None])
+    return A.to_img(np.ones((H, W, 3), np.float32) * np.array((120, 6, 12), np.float32) / 255, al)
+
+
+def shot_title(t, dur):
+    name, enc = FONDO_TITULO
+    if photo_path(name):
+        c = kenburns(name, enc, t, dur)
+    else:
+        c = new_canvas(RED_DARK)
+    c.alpha_composite(Image.new("RGBA", (W, H), RED_DARK + (175,)))
+    c.alpha_composite(radial_light(540, 960, (230, 40, 46), 0.45))
+    put_reveal(c, shadowed("NUESTROS", 140, WHITE, 8), 540, 820, prog(t, 0.1, 0.4))
+    pb = ease_out(prog(t, 0.35, 0.4))
+    if pb > 0:
+        txt = text_img("SERVICIOS", "Black", 150, RED, 4)
+        bw, bh = txt.width + 90, txt.height + 50
+        band = Image.new("RGBA", (int(bw * pb) + 1, bh), WHITE + (255,))
+        c.alpha_composite(band, (540 - bw // 2, 1010 - bh // 2))
+        if pb > 0.5:
+            put_reveal(c, txt, 540, 1010, prog(t, 0.5, 0.35))
+    pl = ease_out(prog(t, 0.6, 0.6))
+    if pl > 0:
+        ln = Image.new("RGBA", (int(300 * pl) + 1, 8), WHITE + (255,))
+        c.alpha_composite(ln, (540 - ln.width // 2, 1160))
+    z = 1 + 0.03 * t / dur
+    return cover(c, 0.5, 0.5, z).convert("RGBA")
+
+
+@lru_cache(maxsize=None)
+def brake_disc(size=1500):
+    """Disco de freno perforado y ventilado (vista frontal)."""
+    S = size * 2
+    y, x = np.mgrid[0:S, 0:S].astype(np.float32)
+    c = (S - 1) / 2
+    dx, dy = x - c, y - c
+    r = np.sqrt(dx * dx + dy * dy) / (S / 2 * 0.98)
+    th = np.arctan2(dy, dx)
+    v = 0.50 + 0.10 * np.sin(r * 260) * 0.15 + 0.12 * np.cos(th * 2 + 0.6)   # pulido
+    v = np.where(r < 0.46, 0.30 + 0.06 * np.cos(th * 2), v)                  # campana
+    v = np.where((r > 0.455) & (r < 0.47), 0.18, v)
+    holes = np.zeros_like(r, bool)
+    for ring, n, off in ((0.60, 24, 0.0), (0.72, 24, 0.5), (0.84, 24, 0.0)):
+        a = (th / (2 * np.pi) * n + off + ring * 3) % 1.0
+        holes |= (np.abs(r - ring) < 0.022) & (np.abs(a - 0.5) * (2 * np.pi / n) * r < 0.022)
+    v = np.where(holes & (r > 0.5), 0.05, v)
+    for k in range(5):
+        ang = k * 2 * np.pi / 5
+        d = np.sqrt((dx / (S / 2) - np.cos(ang) * 0.3) ** 2 + (dy / (S / 2) - np.sin(ang) * 0.3) ** 2)
+        v = np.where(d < 0.05, 0.12, v)
+    v = np.where(r < 0.16, 0.08, v)
+    alpha = A.smooth(1.0, 0.995, r)
+    img = A.to_img(np.dstack([v * 0.97, v * 0.98, v]), alpha)
+    return img.resize((size, size), Image.LANCZOS)
+
+
+def shot_brakes(t, dur):
+    c = radial_bg(540, 1000, 1300, (60, 62, 68), (10, 10, 12)).copy()
+    sz = 1500
+    disc = brake_disc(sz).rotate(-t * 40, Image.BICUBIC)
+    cx, cy = 380, 900
+    c.alpha_composite(disc, (cx - sz // 2, cy - sz // 2))
+    c.alpha_composite(A.wheel_light(sz), (cx - sz // 2, cy - sz // 2))
+    # pinza (caliper) roja que abraza el borde del disco
+    cal = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(cal)
+    R = sz / 2 * 0.98
+    a0 = -20
+    d.pieslice((cx - R - 70, cy - R - 70, cx + R + 70, cy + R + 70), a0 - 28, a0 + 28, fill=(200, 24, 30, 255))
+    d.pieslice((cx - R * 0.70, cy - R * 0.70, cx + R * 0.70, cy + R * 0.70), a0 - 40, a0 + 40, fill=(0, 0, 0, 0))
+    hole = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(hole).ellipse((cx - R * 0.70, cy - R * 0.70, cx + R * 0.70, cy + R * 0.70), fill=255)
+    cal.putalpha(Image.fromarray(np.minimum(np.asarray(cal.getchannel("A")), 255 - np.asarray(hole))))
+    shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    shadow.putalpha(cal.getchannel("A").filter(ImageFilter.GaussianBlur(20)).point(lambda v: int(v * 0.6)))
+    c.alpha_composite(shadow, (12, 18))
+    c.alpha_composite(cal)
+    hl = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(hl).arc((cx - R - 50, cy - R - 50, cx + R + 50, cy + R + 50), a0 - 24, a0 + 10,
+                           fill=(255, 150, 150, 150), width=10)
+    c.alpha_composite(hl.filter(ImageFilter.GaussianBlur(3)))
+    return cover(c, 0.5, 0.5, 1 + 0.05 * t / dur).convert("RGBA")
+
+
+@lru_cache(maxsize=None)
+def painted_wheel(size=1600):
+    base = A.wheel(1100)
+    a = np.asarray(base, np.float32) / 255
+    S = a.shape[0]
+    y, x = np.mgrid[0:S, 0:S].astype(np.float32)
+    r = np.sqrt((x - S / 2) ** 2 + (y - S / 2) ** 2) / (S / 2 * 0.985)
+    rim = (r < 0.64)[..., None]
+    lum = a[..., :3].mean(2, keepdims=True)
+    paint = np.clip(lum * np.array([1.25, 0.16, 0.18]) + 0.02, 0, 1)    # rojo brillante
+    gloss = np.clip((lum - 0.55) * 2.2, 0, 1) * 0.6
+    paint = np.clip(paint + gloss, 0, 1)
+    out = np.where(rim, paint, a[..., :3])
+    img = A.to_img(out, a[..., 3])
+    return img.resize((size, size), Image.LANCZOS), base.resize((size, size), Image.LANCZOS)
+
+
+def shot_rims(t, dur):
+    c = radial_bg(540, 900, 1300, (58, 60, 66), (10, 10, 12)).copy()
+    painted, raw = painted_wheel(1600)
+    p = ease_in_out(prog(t, 0.2, 1.4))
+    # barrido de pintura en diagonal
+    mask = Image.new("L", (1600, 1600), 0)
+    edge = -400 + 2400 * p
+    ImageDraw.Draw(mask).polygon([(0, 0), (edge, 0), (edge - 600, 1600), (0, 1600)], fill=255)
+    mask = mask.filter(ImageFilter.GaussianBlur(40))
+    wheel_img = raw.copy()
+    wheel_img.paste(painted, (0, 0), mask)
+    wheel_img.putalpha(raw.getchannel("A"))
+    wheel_img = wheel_img.rotate(-t * 12, Image.BICUBIC)
+    cx, cy = 540, 880
+    c.alpha_composite(wheel_img, (cx - 800, cy - 800))
+    c.alpha_composite(A.wheel_light(1600), (cx - 800, cy - 800))
+    # rocío de pintura sobre el borde del barrido
+    if 0.02 < p < 0.98:
+        rng = np.random.default_rng(int(t * 30))
+        spray = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(spray)
+        ex = cx - 800 + edge - 300
+        for _ in range(140):
+            yy = rng.uniform(cy - 700, cy + 700)
+            xx = ex + (cy - yy) * 0.375 + rng.normal(0, 40)
+            rr = rng.uniform(2, 7)
+            d.ellipse((xx - rr, yy - rr, xx + rr, yy + rr), fill=(235, 40, 44, int(rng.uniform(80, 220))))
+        c.alpha_composite(spray.filter(ImageFilter.GaussianBlur(1.5)))
+    return cover(c, 0.5, 0.5, 1 + 0.05 * t / dur).convert("RGBA")
+
+
+FALLBACK = {}
+
+
+def service_shot(idx):
+    lines, name, enc, fb = SERVICIOS[idx]
+
+    def fn(t, dur):
+        if photo_path(name):
+            c = kenburns(name, enc, t, dur)
+        else:
+            c = FALLBACK[fb](t, dur)
+            if fb not in ("hub", "hero"):
+                c = graded(c)
+        c.alpha_composite(strong_grad())
+        # número del servicio
+        num = text_img(f"{idx + 1:02d}", "Black", 64, WHITE, 2)
+        pn = ease_out(prog(t, 0.1, 0.3))
+        if pn > 0:
+            pill = Image.new("RGBA", (num.width + 44, num.height + 20), (0, 0, 0, 0))
+            ImageDraw.Draw(pill).rounded_rectangle((0, 0, pill.width - 1, pill.height - 1), radius=14,
+                                                   fill=RED + (255,))
+            pill.alpha_composite(num, (22, 10))
+            x = 70 - int((1 - pn) * 60)
+            c.alpha_composite(with_alpha(pill, pn), (x, 1060))
+            lab = text_img("SERVICIOS", "Bold", 40, WHITE, 6)
+            c.alpha_composite(with_alpha(lab, pn), (x + pill.width + 22, 1060 + (pill.height - lab.height) // 2))
+        # texto grande
+        size = 150 if len(lines) > 1 else 190
+        y = 1250 if len(lines) > 1 else 1290
+        for k, line in enumerate(lines):
+            img = fit(shadowed(line, size, WHITE, 2), 960)
+            put_reveal(c, img, 60 + img.width / 2, y + k * int(size * 1.02), prog(t, 0.18 + 0.1 * k, 0.4))
+        # barra
+        pb = ease_out(prog(t, 0.35, 0.5))
+        if pb > 0:
+            bar = Image.new("RGBA", (int(260 * pb) + 1, 14), RED + (255,))
+            yb = y + len(lines) * int(size * 1.02) - int(size * 0.25)
+            c.alpha_composite(bar, (80, yb))
+        return c
+    return fn
+
+
+@lru_cache(maxsize=None)
+def clock_icon(size=60):
+    S = size * 4
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.ellipse((0, 0, S - 1, S - 1), fill=WHITE + (255,))
+    d.ellipse((S * 0.12, S * 0.12, S * 0.88, S * 0.88), fill=RED + (255,))
+    d.line((S / 2, S / 2, S / 2, S * 0.24), fill=WHITE + (255,), width=int(S * 0.08))
+    d.line((S / 2, S / 2, S * 0.70, S * 0.58), fill=WHITE + (255,), width=int(S * 0.08))
+    d.ellipse((S * 0.44, S * 0.44, S * 0.56, S * 0.56), fill=WHITE + (255,))
+    return im.resize((size, size), Image.LANCZOS)
+
+
 @lru_cache(maxsize=None)
 def end_logo():
     p = os.path.join(MAT_DIR, "logo.png")
@@ -660,40 +828,59 @@ def pin_icon(size=64):
 
 def shot_end(t, dur):
     c = end_bg().copy()
-    logo, real = end_logo()
-    y_logo = 760
-    pl = prog(t, 0.25, 0.6)
+    logo, _ = end_logo()
+    pl = prog(t, 0.2, 0.6)
     if pl > 0:
-        put(c, logo, 540, y_logo, 0.85 + 0.15 * ease_back(pl, 1.5), clamp(pl * 2.5))
-    # línea blanca bajo el logo
-    pln = ease_out(prog(t, 0.6, 0.5))
-    if pln > 0:
-        ln = Image.new("RGBA", (int(520 * pln) + 1, 8), WHITE + (255,))
-        c.alpha_composite(ln, (540 - ln.width // 2, y_logo + 140))
-    # textos del cierre (quedan fijos hasta el final)
-    put_reveal(c, shadowed(CIERRE_1, 118, WHITE), 540, 1130, prog(t, 0.9, 0.45))
-    l2 = shadowed(CIERRE_2, 80, WHITE)
-    l3 = shadowed(CIERRE_3, 80, WHITE)
-    pa = prog(t, 1.25, 0.45)
-    if pa > 0:
-        pin = pin_icon(60)
-        tot = pin.width + 20 + l2.width
-        x_pin = 540 - tot / 2 + pin.width / 2
-        put(c, pin, x_pin, 1300, 1.0, ease_out(pa))
-        put_reveal(c, l2, x_pin + pin.width / 2 + 20 + l2.width / 2, 1300, pa)
-        put_reveal(c, l3, 540, 1405, prog(t, 1.4, 0.45))
-    if 1.6 < t < 2.6:
-        q = (t - 1.6) / 1.0
+        put(c, logo, 540, 330, 0.85 + 0.15 * ease_back(pl, 1.5), clamp(pl * 2.5))
+    # destacado: 3 cuotas sin interés
+    pc = prog(t, 0.6, 0.55)
+    if pc > 0:
+        box = promo_box()
+        pulse = 1 + 0.018 * math.sin(max(0, t - 1.5) * math.pi * 2) * clamp(t - 1.5)
+        put(c, box, 540, 700, (0.6 + 0.4 * ease_back(pc, 1.8)) * pulse, clamp(pc * 2.5))
+    # horario
+    ph = prog(t, 1.4, 0.45)
+    if ph > 0:
+        ic = clock_icon(64)
+        put(c, ic, 540, 1010, 0.6 + 0.4 * ease_back(ph), ease_out(ph))
+        for k, line in enumerate(HORARIO):
+            put_reveal(c, fit(shadowed(line, 66, WHITE), 980), 540, 1115 + k * 82, prog(t, 1.5 + 0.1 * k, 0.45))
+    # dirección
+    pd = prog(t, 2.0, 0.45)
+    if pd > 0:
+        put(c, pin_icon(56), 540, 1340, 0.6 + 0.4 * ease_back(pd), ease_out(pd))
+        put_reveal(c, fit(shadowed(DIRECCION[0], 58, WHITE), 980), 540, 1440, prog(t, 2.1, 0.45))
+        put_reveal(c, fit(shadowed(DIRECCION[1], 70, WHITE), 930), 540, 1525, prog(t, 2.2, 0.45))
+    if 1.4 < t < 2.4:
+        q = (t - 1.4) / 1.0
         sweep = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         x = -300 + 1700 * q
-        ImageDraw.Draw(sweep).polygon([(x, 600), (x + 120, 600), (x - 80, 920), (x - 200, 920)],
+        ImageDraw.Draw(sweep).polygon([(x, 240), (x + 120, 240), (x - 120, 860), (x - 240, 860)],
                                       fill=(255, 255, 255, 60))
         c.alpha_composite(sweep.filter(ImageFilter.GaussianBlur(18)))
     return c
 
 
-# Foto de fondo del cierre (archivo en reel/material/), None = solo color.
-FONDO_CIERRE = None
+@lru_cache(maxsize=None)
+def promo_box():
+    l1 = text_img("3 CUOTAS", "Black", 158, RED, 4)
+    l2 = text_img("SIN INTERÉS", "Black", 104, WHITE, 6)
+    bw = max(l1.width, l2.width + 80) + 100
+    bh = l1.height + l2.height + 90
+    box = Image.new("RGBA", (bw + 40, bh + 40), (0, 0, 0, 0))
+    sh = Image.new("L", box.size, 0)
+    ImageDraw.Draw(sh).rounded_rectangle((20, 30, bw + 20, bh + 30), radius=36, fill=140)
+    shadow = Image.new("RGBA", box.size, (40, 0, 0, 0))
+    shadow.putalpha(sh.filter(ImageFilter.GaussianBlur(14)))
+    box.alpha_composite(shadow)
+    d = ImageDraw.Draw(box)
+    d.rounded_rectangle((20, 20, bw + 20, bh + 20), radius=36, fill=WHITE + (255,))
+    box.alpha_composite(l1, (20 + (bw - l1.width) // 2, 40))
+    b2w, b2h = l2.width + 60, l2.height + 22
+    yb = 40 + l1.height + 10
+    d.rounded_rectangle((20 + (bw - b2w) // 2, yb, 20 + (bw + b2w) // 2, yb + b2h), radius=16, fill=RED + (255,))
+    box.alpha_composite(l2, (20 + (bw - l2.width) // 2, yb + 11))
+    return box
 
 
 @lru_cache(maxsize=None)
@@ -704,7 +891,7 @@ def end_bg():
         a = np.asarray(ph, np.float32) / 255
         lum = a @ np.array([0.299, 0.587, 0.114], np.float32)
         base = np.asarray(c.convert("RGB"), np.float32) / 255
-        mixed = base * (0.55 + 0.75 * lum[..., None])  # textura sutil en rojo
+        mixed = base * (0.72 + 0.38 * lum[..., None])  # textura sutil en rojo
         c = A.to_img(np.clip(mixed, 0, 1)).convert("RGBA")
     return c
 
@@ -712,31 +899,19 @@ def end_bg():
 # --------------------------------------------------------------- línea de tiempo
 # (inicio, duración, función, rótulo, transición de entrada)
 def build_timeline():
-    montage = [
-        (5.0, 2.0, shot_tread, "zoom"),
-        (7.0, 2.0, shot_stacks, "push_up"),
-        (9.0, 2.0, shot_garage, "fade"),
-        (11.0, 1.5, shot_wrench, "push_left"),
-        (12.5, 2.0, shot_balance, "zoom"),
-        (14.5, 2.0, shot_align, "push_up"),
-        (16.5, 1.5, shot_wall, "fade"),
-        (18.0, 1.0, shot_hero, "push_left"),
-        (19.0, 1.0, lambda t, d: shot_stacks(t, d, -1), "push_up"),
-    ]
+    FALLBACK.update({"stacks": shot_stacks, "garage": shot_garage, "hub": shot_brakes,
+                     "hero": shot_rims, "balance": shot_balance})
     tl = [(0.0, 5.0, shot_intro, "cut")]
-    for i, (s, d, fn, tr) in enumerate(montage, start=1):
-        if i in MATERIAL:
-            f = material_shot(i)
-        else:
-            def f(t, dur, fn=fn, i=i):
-                c = fn(t, dur)
-                c = A.to_img(grade_arr(np.asarray(c.convert("RGB"), np.float32) / 255)).convert("RGBA")
-                c.alpha_composite(red_grad_bottom())
-                caption(c, ROTULOS[i - 1], t, dur)
-                return c
-        tl.append((s, d, f, tr))
-    tl.append((20.0, 3.5, shot_reprise, "flash"))
-    tl.append((23.5, 11.5, shot_end, "iris"))
+    t0 = 5.0
+    for (name, enc, label), tr in zip(INTRO_TOMAS, ("zoom", "push_left")):
+        tl.append((t0, 2.0, photo_shot(name, enc, label), tr))
+        t0 += 2.0
+    tl.append((t0, 2.0, shot_title, "flash"))
+    t0 += 2.0
+    for k in range(len(SERVICIOS)):
+        tl.append((t0, 2.5, service_shot(k), "push_up" if k % 2 == 0 else "push_left"))
+        t0 += 2.5
+    tl.append((t0, DUR - t0, shot_end, "iris"))
     return tl
 
 
@@ -805,7 +980,7 @@ def finish_layers():
 
 def bug(canvas, t):
     """Recordatorio fijo durante el montaje."""
-    a = prog(t, 5.3, 0.4) * (1 - prog(t, 19.75, 0.25))
+    a = prog(t, 5.3, 0.4) * (1 - prog(t, 8.75, 0.25))
     if a <= 0:
         return
     txt = text_img("3 CUOTAS SIN INTERÉS", "Black", 46, RED, 3)
@@ -843,25 +1018,21 @@ def render_frame(i):
     return np.clip(a, 0, 255).astype(np.uint8)
 
 
-def init_worker(material):
-    global TL, MATERIAL
-    MATERIAL = material
+def init_worker():
+    global TL
     TL = build_timeline()
 
 
 def main():
-    global TL, MATERIAL
+    global TL
     os.makedirs(OUT_DIR, exist_ok=True)
-    MATERIAL = prepare_material()
-    if MATERIAL:
-        print("Material real encontrado para tomas:", sorted(MATERIAL))
     TL = build_timeline()
 
     if "--preview" in sys.argv:
         prev = os.path.join(OUT_DIR, "previews")
         os.makedirs(prev, exist_ok=True)
         times = [float(x) for x in sys.argv[sys.argv.index("--preview") + 1:]] or \
-            [0.5, 1.6, 3.0, 5.0, 6.0, 8.0, 10.0, 11.8, 13.6, 15.8, 17.2, 18.5, 19.5, 20.0, 21.6, 23.5, 25.0, 30.0, 34.9]
+            [3.0, 6.0, 8.0, 10.2, 12.4, 14.9, 17.4, 19.9, 22.4, 24.0, 27.0, 36.9]
         for tt in times:
             Image.fromarray(render_frame(int(round(tt * FPS)))).save(os.path.join(prev, f"t{tt:05.2f}.jpg"), quality=88)
         print("previews en", prev)
@@ -879,7 +1050,7 @@ def main():
            "-af", "volume=-4dB", "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
            "-t", str(DUR), "-movflags", "+faststart", out]
     ff = subprocess.Popen(cmd, stdin=subprocess.PIPE)
-    with Pool(os.cpu_count(), initializer=init_worker, initargs=(MATERIAL,)) as pool:
+    with Pool(os.cpu_count(), initializer=init_worker) as pool:
         for k, fr in enumerate(pool.imap(render_frame, range(NF), chunksize=3)):
             ff.stdin.write(fr.tobytes())
             if k % 60 == 0:

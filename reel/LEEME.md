@@ -1,25 +1,29 @@
 # Reel Neumáticos Ader
 
-Video final: `salida/neumaticos_ader_reel.mp4` (1080×1920, 30 fps, 35 s, H.264 + AAC).
+Video final: `salida/neumaticos_ader_reel.mp4` (1080×1920, 30 fps, 37 s, H.264 + AAC).
+
+| Tiempo | Escena |
+|---|---|
+| 0–5 s | Logo, neumático girando y «3 CUOTAS SIN INTERÉS» |
+| 5–9 s | Dos tomas del rubro: neumáticos y taller |
+| 9–11 s | «Nuestros servicios» |
+| 11–23,5 s | 5 servicios, 2,5 s cada uno, con texto grande |
+| 23,5–37 s | Cierre: logo, 3 cuotas sin interés, horario y dirección |
 
 ## Regenerar
 ```
 pip install numpy pillow scipy
 python3 reel/musica.py          # música original 120 BPM
-python3 reel/generar_reel.py    # video (unos 4 minutos)
+python3 reel/generar_reel.py    # video (unos 5 minutos)
+python3 reel/generar_reel.py --preview   # cuadros sueltos en salida/previews
 ```
 
-## Usar fotos o videos reales del local
-Copiá archivos en `reel/material/` y volvé a correr `generar_reel.py`:
+## Cambiar fotos y textos
+Todo se configura al principio de `generar_reel.py`:
+- `SERVICIOS`: texto, foto y encuadre de cada servicio. Si falta la foto
+  (hoy `frenos.jpg` y `llantas.jpg`), se usa una animación generada.
+- `INTRO_TOMAS`, `FONDO_TITULO`, `FONDO_CIERRE`: fotos del resto del video.
+- `HORARIO`, `DIRECCION`: textos del cierre.
+- `reel/material/logo.png` (fondo transparente) reemplaza la reconstrucción del logo.
 
-| Archivo | Reemplaza |
-|---|---|
-| `toma_01` … `toma_09` (.jpg/.png/.mp4/.mov) | las tomas del montaje, en orden (5 s a 20 s) |
-| `logo.png` (fondo transparente) | la reconstrucción del logo (`assets.logo_ader`) |
-
-Los textos y los rótulos de cada toma se editan al principio de `generar_reel.py`.
-
-## Fotos actuales
-Las tomas 1 a 7 y 9 son fotos de Wikimedia Commons con licencia libre, con tinte rojo.
-Autores y licencias en `material/CREDITOS.md`: las CC BY piden mencionar al autor en la publicación.
-Para usar fotos del local, reemplazá los `toma_XX.jpg` y ajustá `ENCUADRES` en `generar_reel.py`.
+Las fotos actuales son de Wikimedia Commons: ver `material/CREDITOS.md`.
