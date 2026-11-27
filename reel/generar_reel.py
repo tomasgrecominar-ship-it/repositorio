@@ -41,10 +41,19 @@ CIERRE_3 = "Villa Adelina"
 # Encuadre de cada foto real del montaje: (zoom inicial, zoom final,
 # centro x inicial, centro y inicial, centro x final, centro y final), en
 # fracciones de la imagen. Se usa para el movimiento lento de cámara.
-ENCUADRES = {}
+ENCUADRES = {
+    1: (1.00, 1.15, 0.50, 0.50, 0.45, 0.60),   # pila de neumáticos
+    2: (1.18, 1.02, 0.45, 0.40, 0.55, 0.55),   # neumáticos al sol
+    3: (1.30, 1.45, 0.55, 0.62, 0.45, 0.66),   # auto rojo en el taller
+    4: (1.05, 1.22, 0.55, 0.55, 0.60, 0.62),   # desmontadora
+    5: (1.32, 1.48, 0.50, 0.36, 0.52, 0.32),   # balanceadora
+    6: (1.05, 1.20, 0.45, 0.45, 0.50, 0.40),   # auto en el elevador
+    7: (1.55, 1.75, 0.22, 0.30, 0.30, 0.26),   # estantería con cubiertas
+    9: (1.70, 1.90, 0.30, 0.78, 0.36, 0.74),   # banda de rodamiento de cerca
+}
 # Rótulos de las tomas del montaje (None = sin rótulo).
 ROTULOS = ["NEUMÁTICOS", "PARA TU AUTO", "TALLER", "MONTAJE",
-           "BALANCEO", "ALINEACIÓN", "TE ASESORAMOS", None, None]
+           "BALANCEO", "EN BUENAS MANOS", "STOCK", None, None]
 
 
 # ------------------------------------------------------------- utilidades
@@ -168,6 +177,8 @@ def caption(canvas, text, t, dur):
     if p_in <= 0 or p_out >= 1:
         return
     img = text_img(text, "Black", 92, WHITE, 4)
+    if img.width > 880:
+        img = img.resize((880, int(img.height * 880 / img.width)), Image.LANCZOS)
     y = 1430
     bar_w = int((img.width + 60) * ease_out(p_in))
     a = 1 - p_out
@@ -246,15 +257,17 @@ def graded_photo(p):
     if max(im.size) > lim:
         s = lim / max(im.size)
         im = im.resize((int(im.width * s), int(im.height * s)), Image.LANCZOS)
-    a = np.asarray(im, np.float32) / 255
+    return A.to_img(grade_arr(np.asarray(im, np.float32) / 255))
+
+
+def grade_arr(a):
     lum = (a @ np.array([0.299, 0.587, 0.114], np.float32))[..., None]
     a = a * 0.62 + lum * 0.38                       # baja saturación
     a = np.clip((a - 0.5) * 1.18 + 0.5, 0, 1)       # contraste
     a = a * a * (3 - 2 * a) * 0.35 + a * 0.65        # curva en S suave
     red = np.array(RED, np.float32) / 255
     tint = lum * red * 1.55                           # sombras y medios en rojo
-    a = a * 0.7 + np.clip(tint, 0, 1) * 0.3
-    return A.to_img(a)
+    return a * 0.7 + np.clip(tint, 0, 1) * 0.3
 
 
 @lru_cache(maxsize=None)
@@ -717,6 +730,8 @@ def build_timeline():
         else:
             def f(t, dur, fn=fn, i=i):
                 c = fn(t, dur)
+                c = A.to_img(grade_arr(np.asarray(c.convert("RGB"), np.float32) / 255)).convert("RGBA")
+                c.alpha_composite(red_grad_bottom())
                 caption(c, ROTULOS[i - 1], t, dur)
                 return c
         tl.append((s, d, f, tr))
