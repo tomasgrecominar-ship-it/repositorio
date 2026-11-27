@@ -8,11 +8,10 @@ del texto de la publicación.
 |---|---|---|---|
 | pila_neumaticos.jpg | Dirty car tires stacked in front of mechanic.jpg | PheobeLongneck | CC0 |
 | neumaticos_sol.jpg | Stack of tires in the sun.jpg | PheobeLongneck | CC0 |
-| taller.jpg | Peugeot 205 cabrio with open hood in auto repair shop.jpg | Nenad Stojkovic | CC BY 2.0 |
 | desmontadora.jpg | Tire Changer.jpg | Flippin504 | CC BY 3.0 |
-| balanceadora.jpg | Modern car wheel balancing machine tool at tire service.jpg | Shixart1985 | CC BY 2.0 |
+| alineadora.jpg | Wheel alignment on a Ford Focus 2.jpg | Mike Peel (www.mikepeel.net) | CC BY-SA 4.0 |
 | tren_delantero.jpg | Car mechanic worker repairing suspension of lifted automobile at auto repair garage shop.jpg | Shixart1985 | CC BY 2.0 |
 
 Texto para la publicación:
 
-    Fotos: Nenad Stojkovic (CC BY 2.0), Flippin504 (CC BY 3.0), Shixart1985 (CC BY 2.0) vía Wikimedia Commons.
+    Fotos: Flippin504 (CC BY 3.0), Shixart1985 (CC BY 2.0), Mike Peel (CC BY-SA 4.0) vía Wikimedia Commons.

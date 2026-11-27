@@ -18,7 +18,7 @@ from PIL import Image, ImageDraw, ImageFilter
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import assets as A
 
-W, H, FPS, DUR = 1080, 1920, 30, 37.0
+W, H, FPS, DUR = 1080, 1920, 30, 35.0
 NF = int(DUR * FPS)
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(HERE, "salida")
@@ -42,7 +42,6 @@ DIRECCION = ["Te esperamos en", "Av. de Mayo 210, Villa Adelina"]
 # la imagen: define el movimiento lento de cámara sobre la foto.
 INTRO_TOMAS = [
     ("pila_neumaticos.jpg", (1.00, 1.15, 0.50, 0.50, 0.45, 0.60), "NEUMÁTICOS"),
-    ("taller.jpg", (1.30, 1.45, 0.55, 0.62, 0.45, 0.66), "TALLER"),
 ]
 FONDO_TITULO = ("neumaticos_sol.jpg", (1.10, 1.25, 0.50, 0.45, 0.50, 0.55))
 # Servicios: (líneas del texto grande, foto, encuadre, toma generada si falta la foto)
@@ -51,9 +50,9 @@ SERVICIOS = [
     (["TREN", "DELANTERO"], "tren_delantero.jpg", (1.05, 1.20, 0.45, 0.45, 0.50, 0.40), "garage"),
     (["FRENOS"], "frenos.jpg", (1.10, 1.25, 0.50, 0.50, 0.50, 0.50), "hub"),
     (["PINTURA", "DE LLANTAS"], "llantas.jpg", (1.10, 1.25, 0.50, 0.50, 0.50, 0.50), "hero"),
-    (["ALINEACIÓN", "Y BALANCEO"], "balanceadora.jpg", (1.32, 1.48, 0.50, 0.36, 0.52, 0.32), "balance"),
+    (["ALINEACIÓN", "Y BALANCEO"], "alineadora.jpg", (1.00, 1.10, 0.47, 0.50, 0.50, 0.48), "balance"),
 ]
-FONDO_CIERRE = "taller.jpg"
+FONDO_CIERRE = "pila_neumaticos.jpg"
 
 
 # ------------------------------------------------------------- utilidades
@@ -980,7 +979,7 @@ def finish_layers():
 
 def bug(canvas, t):
     """Recordatorio fijo durante el montaje."""
-    a = prog(t, 5.3, 0.4) * (1 - prog(t, 8.75, 0.25))
+    a = prog(t, 5.3, 0.4) * (1 - prog(t, 6.75, 0.25))
     if a <= 0:
         return
     txt = text_img("3 CUOTAS SIN INTERÉS", "Black", 46, RED, 3)
@@ -1032,7 +1031,7 @@ def main():
         prev = os.path.join(OUT_DIR, "previews")
         os.makedirs(prev, exist_ok=True)
         times = [float(x) for x in sys.argv[sys.argv.index("--preview") + 1:]] or \
-            [3.0, 6.0, 8.0, 10.2, 12.4, 14.9, 17.4, 19.9, 22.4, 24.0, 27.0, 36.9]
+            [3.0, 6.0, 8.0, 10.2, 12.7, 15.2, 17.7, 20.2, 21.0, 22.0, 25.0, 34.9]
         for tt in times:
             Image.fromarray(render_frame(int(round(tt * FPS)))).save(os.path.join(prev, f"t{tt:05.2f}.jpg"), quality=88)
         print("previews en", prev)
@@ -1047,7 +1046,7 @@ def main():
            "-i", audio,
            "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-maxrate", "12M", "-bufsize", "24M", "-pix_fmt", "yuv420p",
            "-profile:v", "high", "-level", "4.2",
-           "-af", "volume=-4dB", "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
+           "-af", "volume=-2dB", "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
            "-t", str(DUR), "-movflags", "+faststart", out]
     ff = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     with Pool(os.cpu_count(), initializer=init_worker) as pool:
