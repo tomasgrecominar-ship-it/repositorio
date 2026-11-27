@@ -412,3 +412,56 @@ def logo_wordmark(scale=1.0):
     yb = y_big + h_big + gap
     d.rectangle(((W - w_big) / 2, yb, (W + w_big) / 2, yb + bar), fill=(255, 255, 255, 255))
     return img
+
+
+# ------------------------------------------------------- logo Neumáticos Ader
+LOGO_RED = (226, 38, 34)
+
+
+@lru_cache(maxsize=None)
+def logo_ader(width=900, shadow=True):
+    """Reconstrucción en alta resolución del logo (cursiva gruesa,
+    NEUMATICOS blanco y ADER rojo, con contorno negro)."""
+    size = 400
+    f = font("Black", size)
+    s_out = int(size * 0.06)   # contorno negro
+    s_in = int(size * 0.035)    # filete blanco de ADER
+    d0 = ImageDraw.Draw(Image.new("L", (4, 4)))
+    w1 = d0.textlength("NEUMATICOS", font=f)
+    gap = size * 0.03
+    w2 = d0.textlength("ADER", font=f)
+    pad = s_out * 2 + 40
+    Wc = int(w1 + gap + w2 + 2 * pad)
+    Hc = int(size * 1.3 + 2 * pad)
+    x1, x2, y = pad, pad + w1 + gap, pad
+
+    def layer(draw_fn):
+        im = Image.new("RGBA", (Wc, Hc), (0, 0, 0, 0))
+        draw_fn(ImageDraw.Draw(im))
+        return im
+
+    out = Image.new("RGBA", (Wc, Hc), (0, 0, 0, 0))
+    black = (16, 14, 20, 255)
+    out.alpha_composite(layer(lambda d: (d.text((x1, y), "NEUMATICOS", font=f, fill=black, stroke_width=s_out, stroke_fill=black),
+                                         d.text((x2, y), "ADER", font=f, fill=black, stroke_width=s_out, stroke_fill=black))))
+    out.alpha_composite(layer(lambda d: d.text((x2, y), "ADER", font=f, fill=(255, 255, 255, 255),
+                                               stroke_width=s_in, stroke_fill=(255, 255, 255, 255))))
+    out.alpha_composite(layer(lambda d: (d.text((x1, y), "NEUMATICOS", font=f, fill=(255, 255, 255, 255)),
+                                         d.text((x2, y), "ADER", font=f, fill=LOGO_RED + (255,)))))
+    # condensar y poner en cursiva
+    cond = 0.93
+    out = out.resize((int(Wc * cond), Hc), Image.LANCZOS)
+    sh = 0.17
+    W2 = int(out.width + Hc * sh)
+    out = out.transform((W2, Hc), Image.AFFINE, (1, sh, -Hc * sh, 0, 1, 0), Image.BICUBIC)
+    if shadow:
+        a = out.getchannel("A").filter(ImageFilter.GaussianBlur(14))
+        sh_img = Image.new("RGBA", out.size, (0, 0, 0, 0))
+        sh_img.putalpha(a.point(lambda v: int(v * 0.55)))
+        base = Image.new("RGBA", out.size, (0, 0, 0, 0))
+        base.alpha_composite(sh_img, (10, 16))
+        base.alpha_composite(out)
+        out = base
+    out = out.crop(out.getbbox())
+    s = width / out.width
+    return out.resize((width, int(out.height * s)), Image.LANCZOS)

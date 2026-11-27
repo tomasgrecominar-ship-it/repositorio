@@ -25,7 +25,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(HERE, "salida")
 MAT_DIR = os.path.join(HERE, "material")
 TMP_DIR = os.path.join(OUT_DIR, "_tmp_material")
-YELLOW = A.YELLOW
+RED = (214, 28, 34)
+RED_DARK = (92, 6, 10)
+YELLOW = RED  # acento (las tomas generadas también pasan a rojo)
 WHITE = (255, 255, 255)
 BLACK = (14, 14, 16)
 
@@ -36,6 +38,10 @@ PROMO_3 = "SIN INTERÉS"
 CIERRE_1 = "¡Te esperamos!"
 CIERRE_2 = "Av. de Mayo 210,"
 CIERRE_3 = "Villa Adelina"
+# Encuadre de cada foto real del montaje: (zoom inicial, zoom final,
+# centro x inicial, centro y inicial, centro x final, centro y final), en
+# fracciones de la imagen. Se usa para el movimiento lento de cámara.
+ENCUADRES = {}
 # Rótulos de las tomas del montaje (None = sin rótulo).
 ROTULOS = ["NEUMÁTICOS", "PARA TU AUTO", "TALLER", "MONTAJE",
            "BALANCEO", "ALINEACIÓN", "TE ASESORAMOS", None, None]
@@ -165,7 +171,7 @@ def caption(canvas, text, t, dur):
     y = 1430
     bar_w = int((img.width + 60) * ease_out(p_in))
     a = 1 - p_out
-    bar = Image.new("RGBA", (max(bar_w, 1), 12), YELLOW + (255,))
+    bar = Image.new("RGBA", (max(bar_w, 1), 14), (255, 40, 46, 255))
     canvas.alpha_composite(with_alpha(bar, a), (70, y + img.height // 2 + 12))
     put_reveal(canvas, img, 70 + img.width / 2, y, prog(t, 0.22, 0.35), a)
 
@@ -204,20 +210,51 @@ MATERIAL = {}
 
 def material_shot(slot):
     kind, path = MATERIAL[slot]
+    z0, z1, x0, y0, x1, y1 = ENCUADRES.get(slot, (1.0, 1.12, 0.5, 0.5, 0.5, 0.5))
 
     def fn(t, dur):
         if kind == "image":
-            img = load_image(path)
-            z = 1.0 + 0.10 * clamp(t / max(dur, 0.1))
-            c = cover(img, 0.5, 0.5, z).convert("RGBA")
+            img = graded_photo(path)
+            e = ease_in_out(clamp(t / max(dur, 0.1)) * 0.85 + 0.15 * clamp(t / max(dur, 0.1)))
+            c = cover(img, x0 + (x1 - x0) * e, y0 + (y1 - y0) * e, z0 + (z1 - z0) * e).convert("RGBA")
         else:
             frames = sorted(glob.glob(os.path.join(path, "*.jpg")))
             k = int(clamp(t * FPS, 0, len(frames) - 1))
             c = Image.open(frames[k]).convert("RGBA")
-        c.alpha_composite(vgrad_overlay(1100, 1920, 0, 0.55))
+        c.alpha_composite(red_grad_bottom())
         caption(c, ROTULOS[slot - 1], t, dur)
         return c
     return fn
+
+
+@lru_cache(maxsize=None)
+def red_grad_bottom():
+    al = np.zeros((H, W), np.float32)
+    ys = np.arange(H, dtype=np.float32)
+    al[:] = (np.clip((ys - 1050) / 870, 0, 1) ** 1.3 * 0.85)[:, None]
+    top = np.clip((380 - ys) / 380, 0, 1) * 0.45
+    al = np.maximum(al, top[:, None])
+    return A.to_img(np.ones((H, W, 3), np.float32) * np.array(RED_DARK, np.float32) / 255, al)
+
+
+@lru_cache(maxsize=None)
+def graded_photo(p):
+    """Foto real con corrección de color: contraste y dominante roja."""
+    from PIL import ImageOps
+    im = ImageOps.exif_transpose(Image.open(p)).convert("RGB")
+    lim = 2600
+    if max(im.size) > lim:
+        s = lim / max(im.size)
+        im = im.resize((int(im.width * s), int(im.height * s)), Image.LANCZOS)
+    a = np.asarray(im, np.float32) / 255
+    lum = (a @ np.array([0.299, 0.587, 0.114], np.float32))[..., None]
+    a = a * 0.62 + lum * 0.38                       # baja saturación
+    a = np.clip((a - 0.5) * 1.18 + 0.5, 0, 1)       # contraste
+    a = a * a * (3 - 2 * a) * 0.35 + a * 0.65        # curva en S suave
+    red = np.array(RED, np.float32) / 255
+    tint = lum * red * 1.55                           # sombras y medios en rojo
+    a = a * 0.7 + np.clip(tint, 0, 1) * 0.3
+    return A.to_img(a)
 
 
 @lru_cache(maxsize=None)
@@ -232,43 +269,100 @@ def wheel_angle(t, w0=1080.0, w1=300.0, k=1.3):
 
 
 def shot_intro(t, dur):
-    c = radial_bg(540, 1560, 1300, (70, 56, 20), (10, 10, 12)).copy()
+    c = radial_bg(540, 1500, 1500, (232, 40, 44), (78, 4, 8)).copy()
     ang, w = wheel_angle(max(t, 0))
-    sz = 1420
-    wh = A.spinning_wheel(sz, ang, clamp((w - 150) / 700))
-    cx, cy = 540, 1590
-    # sombra / halo
+    sz = 1360
+    cx, cy = 540, 1660
+    wheel_img = intro_wheel()
+    if wheel_img is not None:
+        wh = motion_blur_rot(wheel_img, ang, clamp((w - 150) / 700)).resize((sz, sz), Image.BICUBIC)
+    else:
+        wh = A.spinning_wheel(sz, ang, clamp((w - 150) / 700))
+    sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(sh).ellipse((cx - sz // 2 - 10, cy - sz // 2 + 30, cx + sz // 2 + 10, cy + sz // 2 + 60), fill=(30, 0, 0, 150))
+    c.alpha_composite(sh.filter(ImageFilter.GaussianBlur(40)))
     c.alpha_composite(wh, (cx - sz // 2, cy - sz // 2))
-    lt = A.wheel_light(sz)
-    c.alpha_composite(lt, (cx - sz // 2, cy - sz // 2))
-    c.alpha_composite(vgrad_overlay(0, 1150, 0.75, 0.0))
+    c.alpha_composite(A.wheel_light(sz), (cx - sz // 2, cy - sz // 2))
+    # logo arriba
+    pl = prog(t, 0.15, 0.5)
+    if pl > 0:
+        put(c, A.logo_ader(760), 540, 190, 0.9 + 0.1 * ease_out(pl), ease_out(pl))
     # textos
     p3 = prog(t, 1.0, 0.45)
     if p3 > 0:
         s = 1 + 1.4 * (1 - ease_back(p3, 2.2))
-        put(c, text_img(PROMO_1, "Black", 600, YELLOW), 540, 420, s, clamp(p3 * 3))
-    put_reveal(c, text_img(PROMO_2, "Black", 205, WHITE, 6), 540, 805, prog(t, 1.5, 0.4))
+        put(c, shadowed(PROMO_1, 560, WHITE), 540, 560, s, clamp(p3 * 3))
+    put_reveal(c, shadowed(PROMO_2, 200, WHITE, 6), 540, 910, prog(t, 1.5, 0.4))
     pb = ease_out(prog(t, 2.0, 0.4))
     if pb > 0:
-        txt = text_img(PROMO_3, "Black", 128, BLACK, 4)
+        txt = text_img(PROMO_3, "Black", 124, RED, 4)
         bw, bh = txt.width + 80, txt.height + 46
-        band = Image.new("RGBA", (int(bw * pb) + 1, bh), YELLOW + (255,))
+        band = Image.new("RGBA", (int(bw * pb) + 1, bh), WHITE + (255,))
         x0 = 540 - bw // 2
-        c.alpha_composite(band, (x0, 1010 - bh // 2))
+        c.alpha_composite(band, (x0, 1105 - bh // 2))
         if pb > 0.5:
-            put_reveal(c, txt, 540, 1010, prog(t, 2.2, 0.35))
+            put_reveal(c, txt, 540, 1105, prog(t, 2.2, 0.35))
     # temblor de cámara en los golpes
-    sh = 0
+    shk = 0
     for hit in (1.0, 2.0):
         if t >= hit:
-            sh += 22 * math.exp(-(t - hit) * 12) * math.sin((t - hit) * 70)
-    if abs(sh) > 0.5:
-        c = c.transform(c.size, Image.AFFINE, (1, 0, 0, 0, 1, sh), Image.BICUBIC)
-    # zoom lento
+            shk += 22 * math.exp(-(t - hit) * 12) * math.sin((t - hit) * 70)
+    if abs(shk) > 0.5:
+        c = c.transform(c.size, Image.AFFINE, (1, 0, 0, 0, 1, shk), Image.BICUBIC)
     z = 1 + 0.04 * clamp(t / dur)
     if z > 1.001:
         c = cover(c, 0.5, 0.5, z)
     return c
+
+
+# Rueda real para la apertura: (archivo, centro x, centro y, radio) en píxeles
+# de la foto original. None = se usa la rueda generada.
+RUEDA_INTRO = None
+
+
+@lru_cache(maxsize=None)
+def intro_wheel():
+    if not RUEDA_INTRO:
+        return None
+    from PIL import ImageOps
+    f, cx, cy, r = RUEDA_INTRO
+    im = ImageOps.exif_transpose(Image.open(os.path.join(MAT_DIR, f))).convert("RGB")
+    crop = im.crop((cx - r, cy - r, cx + r, cy + r)).resize((1100, 1100), Image.LANCZOS)
+    mask = Image.new("L", (4400, 4400), 0)
+    ImageDraw.Draw(mask).ellipse((8, 8, 4392, 4392), fill=255)
+    mask = mask.resize((1100, 1100), Image.LANCZOS)
+    a = np.asarray(crop, np.float32) / 255
+    a = np.clip((a - 0.5) * 1.12 + 0.5, 0, 1)
+    out = A.to_img(a).convert("RGBA")
+    out.putalpha(mask)
+    return out
+
+
+def motion_blur_rot(img, ang, amt):
+    if amt < 0.05:
+        return img.rotate(ang, Image.BICUBIC)
+    n = 9
+    spread = 30 * amt
+    acc = np.zeros((img.height, img.width, 4), np.float32)
+    for i in range(n):
+        acc += np.asarray(img.rotate(ang + (i / (n - 1) - 0.5) * spread, Image.BICUBIC), np.float32)
+    return Image.fromarray(np.clip(acc / n, 0, 255).astype(np.uint8), "RGBA")
+
+
+@lru_cache(maxsize=None)
+def shadowed(text, size, color, tracking=0):
+    """Texto con sombra suave para separarlo del fondo rojo."""
+    t = text_img(text, "Black", size, color, tracking)
+    pad = int(size * 0.12)
+    out = Image.new("RGBA", (t.width + 2 * pad, t.height + 2 * pad), (0, 0, 0, 0))
+    sh = Image.new("RGBA", out.size, (0, 0, 0, 0))
+    a = Image.new("L", out.size, 0)
+    a.paste(t.getchannel("A"), (pad, pad + int(size * 0.03)))
+    a = a.filter(ImageFilter.GaussianBlur(size * 0.04)).point(lambda v: int(v * 0.55))
+    sh.putalpha(a)
+    out.alpha_composite(sh)
+    out.alpha_composite(t, (pad, pad))
+    return out
 
 
 @lru_cache(maxsize=None)
@@ -494,11 +588,9 @@ def shot_hero(t, dur):
 
 
 def shot_reprise(t, dur):
-    c = new_canvas(YELLOW)
+    c = radial_bg(540, 700, 1400, (226, 36, 40), (110, 6, 10)).copy()
     d = ImageDraw.Draw(c)
-    # franja diagonal sutil
-    d.polygon([(0, 1250), (W, 1000), (W, 1120), (0, 1370)], fill=(245, 186, 26, 255))
-    # rueda que rueda y frena
+    d.polygon([(0, 1250), (W, 1000), (W, 1120), (0, 1370)], fill=(150, 12, 18, 255))
     sz = 760
     cx_end = 540
     p = ease_out(prog(t, 0.0, 1.3))
@@ -507,18 +599,28 @@ def shot_reprise(t, dur):
     vel = (1 - prog(t, 0.0, 1.3)) ** 2
     cy = 1480
     sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ImageDraw.Draw(sh).ellipse((cx - 360, cy + 330, cx + 360, cy + 410), fill=(0, 0, 0, 110))
+    ImageDraw.Draw(sh).ellipse((cx - 360, cy + 330, cx + 360, cy + 410), fill=(20, 0, 0, 140))
     c.alpha_composite(sh.filter(ImageFilter.GaussianBlur(20)))
-    wh = A.spinning_wheel(sz, ang, vel)
+    wheel_img = intro_wheel()
+    if wheel_img is not None:
+        wh = motion_blur_rot(wheel_img, ang, vel).resize((sz, sz), Image.BICUBIC)
+    else:
+        wh = A.spinning_wheel(sz, ang, vel)
     c.alpha_composite(wh, (int(cx - sz / 2), cy - sz // 2))
     c.alpha_composite(A.wheel_light(sz), (int(cx - sz / 2), cy - sz // 2))
-    # textos
-    put_reveal(c, text_img("PAGÁ EN", "Black", 96, BLACK, 10), 540, 330, prog(t, 0.15, 0.35))
+    put_reveal(c, shadowed("PAGÁ EN", 96, WHITE, 10), 540, 330, prog(t, 0.15, 0.35))
     p3 = prog(t, 0.3, 0.45)
     if p3 > 0:
         s = 1 + 0.8 * (1 - ease_back(p3, 2.0))
-        put(c, text_img("3 " + PROMO_2, "Black", 180, BLACK, 4), 540, 560, s, clamp(p3 * 3))
-    put_reveal(c, text_img(PROMO_3, "Black", 140, BLACK, 4), 540, 780, prog(t, 0.6, 0.4))
+        put(c, shadowed("3 " + PROMO_2, 180, WHITE, 4), 540, 560, s, clamp(p3 * 3))
+    pb = ease_out(prog(t, 0.6, 0.4))
+    if pb > 0:
+        txt = text_img(PROMO_3, "Black", 130, RED, 4)
+        bw, bh = txt.width + 80, txt.height + 46
+        band = Image.new("RGBA", (int(bw * pb) + 1, bh), WHITE + (255,))
+        c.alpha_composite(band, (540 - bw // 2, 790 - bh // 2))
+        if pb > 0.5:
+            put_reveal(c, txt, 540, 790, prog(t, 0.75, 0.35))
     return c
 
 
@@ -527,11 +629,9 @@ def end_logo():
     p = os.path.join(MAT_DIR, "logo.png")
     if os.path.exists(p):
         img = Image.open(p).convert("RGBA")
-        s = min(820 / img.width, 520 / img.height)
+        s = min(960 / img.width, 520 / img.height)
         return img.resize((int(img.width * s), int(img.height * s)), Image.LANCZOS), True
-    img = A.logo_wordmark(1.0)
-    s = 760 / img.width
-    return img.resize((int(img.width * s), int(img.height * s)), Image.LANCZOS), False
+    return A.logo_ader(960), True
 
 
 @lru_cache(maxsize=None)
@@ -539,47 +639,60 @@ def pin_icon(size=64):
     S = size * 4
     im = Image.new("RGBA", (S, int(S * 1.3)), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    d.ellipse((0, 0, S, S), fill=YELLOW + (255,))
-    d.polygon([(S * 0.12, S * 0.7), (S * 0.88, S * 0.7), (S / 2, S * 1.3)], fill=YELLOW + (255,))
-    d.ellipse((S * 0.32, S * 0.32, S * 0.68, S * 0.68), fill=BLACK + (255,))
+    d.ellipse((0, 0, S, S), fill=WHITE + (255,))
+    d.polygon([(S * 0.12, S * 0.7), (S * 0.88, S * 0.7), (S / 2, S * 1.3)], fill=WHITE + (255,))
+    d.ellipse((S * 0.32, S * 0.32, S * 0.68, S * 0.68), fill=RED + (255,))
     return im.resize((size, int(size * 1.3)), Image.LANCZOS)
 
 
 def shot_end(t, dur):
-    c = radial_bg(540, 820, 1300, (44, 38, 20), (10, 10, 12)).copy()
+    c = end_bg().copy()
     logo, real = end_logo()
-    # ícono de rueda (solo con el logo provisorio)
-    y_logo = 860
-    if not real:
-        pw = ease_back(prog(t, 0.05, 0.6), 1.6)
-        if pw > 0:
-            sz = 300
-            wh = A.spinning_wheel(sz, -t * 60, 0)
-            put(c, wh, 540, 420, pw)
-            put(c, A.wheel_light(sz), 540, 420, pw)
+    y_logo = 760
     pl = prog(t, 0.25, 0.6)
     if pl > 0:
         put(c, logo, 540, y_logo, 0.85 + 0.15 * ease_back(pl, 1.5), clamp(pl * 2.5))
+    # línea blanca bajo el logo
+    pln = ease_out(prog(t, 0.6, 0.5))
+    if pln > 0:
+        ln = Image.new("RGBA", (int(520 * pln) + 1, 8), WHITE + (255,))
+        c.alpha_composite(ln, (540 - ln.width // 2, y_logo + 140))
     # textos del cierre (quedan fijos hasta el final)
-    put_reveal(c, text_img(CIERRE_1, "Black", 112, YELLOW), 540, 1250, prog(t, 0.9, 0.45))
-    l2 = text_img(CIERRE_2, "Bold", 78, WHITE)
-    l3 = text_img(CIERRE_3, "Bold", 78, WHITE)
+    put_reveal(c, shadowed(CIERRE_1, 118, WHITE), 540, 1130, prog(t, 0.9, 0.45))
+    l2 = shadowed(CIERRE_2, 80, WHITE)
+    l3 = shadowed(CIERRE_3, 80, WHITE)
     pa = prog(t, 1.25, 0.45)
     if pa > 0:
-        pin = pin_icon(58)
-        tot = pin.width + 24 + l2.width
+        pin = pin_icon(60)
+        tot = pin.width + 20 + l2.width
         x_pin = 540 - tot / 2 + pin.width / 2
-        put(c, pin, x_pin, 1420, 1.0, ease_out(pa))
-        put_reveal(c, l2, x_pin + pin.width / 2 + 24 + l2.width / 2, 1418, pa)
-        put_reveal(c, l3, 540, 1520, prog(t, 1.4, 0.45))
-    # brillo que barre el logo
+        put(c, pin, x_pin, 1300, 1.0, ease_out(pa))
+        put_reveal(c, l2, x_pin + pin.width / 2 + 20 + l2.width / 2, 1300, pa)
+        put_reveal(c, l3, 540, 1405, prog(t, 1.4, 0.45))
     if 1.6 < t < 2.6:
         q = (t - 1.6) / 1.0
         sweep = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         x = -300 + 1700 * q
-        ImageDraw.Draw(sweep).polygon([(x, 600), (x + 120, 600), (x - 80, 1100), (x - 200, 1100)],
-                                      fill=(255, 255, 255, 50))
+        ImageDraw.Draw(sweep).polygon([(x, 600), (x + 120, 600), (x - 80, 920), (x - 200, 920)],
+                                      fill=(255, 255, 255, 60))
         c.alpha_composite(sweep.filter(ImageFilter.GaussianBlur(18)))
+    return c
+
+
+# Foto de fondo del cierre (archivo en reel/material/), None = solo color.
+FONDO_CIERRE = None
+
+
+@lru_cache(maxsize=None)
+def end_bg():
+    c = radial_bg(540, 900, 1500, (226, 36, 40), (96, 4, 8)).copy()
+    if FONDO_CIERRE and os.path.exists(os.path.join(MAT_DIR, FONDO_CIERRE)):
+        ph = cover(graded_photo(os.path.join(MAT_DIR, FONDO_CIERRE)), 0.5, 0.5, 1.0)
+        a = np.asarray(ph, np.float32) / 255
+        lum = a @ np.array([0.299, 0.587, 0.114], np.float32)
+        base = np.asarray(c.convert("RGB"), np.float32) / 255
+        mixed = base * (0.55 + 0.75 * lum[..., None])  # textura sutil en rojo
+        c = A.to_img(np.clip(mixed, 0, 1)).convert("RGBA")
     return c
 
 
@@ -669,7 +782,7 @@ def transition(kind, a_img, b_img, p):
 def finish_layers():
     y, x = np.mgrid[0:H, 0:W].astype(np.float32)
     d = np.sqrt(((x - W / 2) / (W * 0.75)) ** 2 + ((y - H / 2) / (H * 0.75)) ** 2)
-    vig = 1 - 0.38 * np.clip(d - 0.45, 0, 1) ** 1.5
+    vig = 1 - 0.30 * np.clip(d - 0.45, 0, 1) ** 1.5
     rng = np.random.default_rng(11)
     grains = [rng.normal(0, 4.0, (H, W, 1)).astype(np.float32) for _ in range(6)]
     return vig[..., None], grains
@@ -680,10 +793,10 @@ def bug(canvas, t):
     a = prog(t, 5.3, 0.4) * (1 - prog(t, 19.75, 0.25))
     if a <= 0:
         return
-    txt = text_img("3 CUOTAS SIN INTERÉS", "Black", 46, BLACK, 3)
+    txt = text_img("3 CUOTAS SIN INTERÉS", "Black", 46, RED, 3)
     pill = Image.new("RGBA", (txt.width + 64, txt.height + 30), (0, 0, 0, 0))
     ImageDraw.Draw(pill).rounded_rectangle((0, 0, pill.width - 1, pill.height - 1),
-                                           radius=pill.height // 2, fill=YELLOW + (255,))
+                                           radius=pill.height // 2, fill=WHITE + (255,))
     pill.alpha_composite(txt, (32, 15))
     put(canvas, pill, 540, 215 - 30 * (1 - ease_out(a)), 1.0, a)
 
