@@ -27,3 +27,6 @@ Todo se configura al principio de `generar_reel.py`:
 - `reel/material/logo.png` (fondo transparente) reemplaza la reconstrucción del logo.
 
 Las fotos actuales son de Wikimedia Commons: ver `material/CREDITOS.md`.
+
+## Portada
+`python3 reel/portada.py` genera `salida/portada.jpg` (1080×1920). Lo importante queda en el cuadrado central para que se vea bien en la grilla del perfil.
